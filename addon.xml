@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="script.module.jsruntime" name="Moteur JavaScript" version="1.0.0" provider-name="Thib">
+  <requires>
+    <import addon="xbmc.python" version="3.0.0"/>
+    <import addon="script.module.requests" version="2.22.0"/>
+  </requires>
+  <extension point="xbmc.python.module" library="lib"/>
+  <extension point="xbmc.python.script" library="default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="fr_FR">Moteur JavaScript (Deno ou Node.js) pour les addons qui en ont besoin</summary>
+    <summary lang="en_GB">JavaScript engine (Deno or Node.js) for add-ons that need one</summary>
+    <description lang="fr_FR">Télécharge le moteur adapté à la machine : Deno sur les systèmes 64 bits, Node.js sur ARM 32 bits. Utilisé par l'addon YouTube pour résoudre les défis JavaScript de YouTube (yt-dlp). Lance l'addon pour installer ou mettre à jour le moteur.</description>
+    <description lang="en_GB">Downloads the engine suited to the device: Deno on 64-bit systems, Node.js on 32-bit ARM. Used by the YouTube add-on to solve YouTube's JavaScript challenges (yt-dlp). Run the add-on to install or update the engine.</description>
+    <platform>linux</platform>
+    <license>GPL-3.0-or-later</license>
+    <news>1.0.0 : première version</news>
+  </extension>
+</addon>

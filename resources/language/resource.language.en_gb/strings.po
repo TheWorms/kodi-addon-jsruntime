@@ -1,0 +1,19 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: script.module.jsruntime\n"
+"Language: en_GB\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgctxt "#32001"
+msgid "Downloading the JavaScript engine…"
+msgstr ""
+
+msgctxt "#32002"
+msgid "JavaScript engine installed: %s"
+msgstr ""
+
+msgctxt "#32003"
+msgid "Installation failed: %s"
+msgstr ""
