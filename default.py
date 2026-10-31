@@ -6,6 +6,14 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lib'))
 
-import jsruntime  # noqa: E402
+import xbmc  # noqa: E402
+import xbmcgui  # noqa: E402
 
-jsruntime.install_with_dialog()
+xbmc.log('[jsruntime] lancement de l\'installation', xbmc.LOGINFO)
+try:
+    import jsruntime  # noqa: E402
+    jsruntime.install_with_dialog()
+except Exception as exc:  # toute erreur doit être visible, pas seulement dans le journal
+    import traceback
+    xbmc.log('[jsruntime] échec : %s\n%s' % (exc, traceback.format_exc()), xbmc.LOGERROR)
+    xbmcgui.Dialog().ok('Moteur JavaScript', 'Erreur : %s' % exc)

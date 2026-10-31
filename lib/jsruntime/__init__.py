@@ -27,6 +27,11 @@ def install(progress=None):
     return core.install(profile_dir(), progress)
 
 
+def _target_label():
+    target = detect_target()
+    return '%s (%s)' % target if target else '?'
+
+
 def install_with_dialog(heading=None):
     """Installe ou met à jour le moteur avec une barre de progression.
 
@@ -43,9 +48,10 @@ def install_with_dialog(heading=None):
     def progress(pct, text):
         dialog.update(pct, text)
         return dialog.iscanceled()
+    dialog.update(0, '%s\n%s' % (L(32001), _target_label()))
     try:
         result = install(progress)
-    except InstallError as exc:
+    except Exception as exc:  # InstallError ou imprévu : toujours affiché
         dialog.close()
         xbmc.log('[jsruntime] installation : %s' % exc, xbmc.LOGERROR)
         xbmcgui.Dialog().ok(heading, L(32003) % exc)
