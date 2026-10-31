@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="script.module.jsruntime" name="Moteur JavaScript" version="1.0.1" provider-name="Thib">
+<addon id="script.module.jsruntime" name="Moteur JavaScript" version="1.0.2" provider-name="Thib">
   <requires>
     <import addon="xbmc.python" version="3.0.0"/>
     <import addon="script.module.requests" version="2.22.0"/>
@@ -15,6 +15,10 @@
     <description lang="en_GB">Downloads the engine suited to the device: Deno on 64-bit systems, Node.js on 32-bit ARM. Used by the YouTube add-on to solve YouTube's JavaScript challenges (yt-dlp). Run the add-on to install or update the engine.</description>
     <platform>all</platform>
     <license>GPL-3.0-or-later</license>
-    <news>1.0.1 : erreurs affichées et journalisées ; compatible toutes plateformes Kodi (détection à l'exécution). 1.0.0 : première version</news>
+    <assets>
+      <icon>resources/icon.png</icon>
+      <fanart>resources/fanart.jpg</fanart>
+    </assets>
+    <news>1.0.2 : icône, fanart, licence, README. 1.0.1 : erreurs affichées et journalisées ; compatible toutes plateformes Kodi (détection à l'exécution). 1.0.0 : première version</news>
   </extension>
 </addon>
