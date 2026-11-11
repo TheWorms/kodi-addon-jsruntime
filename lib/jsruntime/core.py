@@ -7,19 +7,24 @@ addon_data/script.module.jsruntime/bin/, que les mises à jour ne touchent pas.
   - Python 64 bits (ARM ou x86) : Deno, recommandé par yt-dlp
   - Python 32 bits ARM (userland 32 bits) : Node.js armv7l (Deno n'existe pas)
 """
-import io
+import hashlib
 import os
 import platform
 import re
 import stat
 import struct
 import subprocess
+import tempfile
 import zipfile
 
 import requests
 
 DENO_URL = 'https://github.com/denoland/deno/releases/latest/download/deno-%s-unknown-linux-gnu.zip'
 NODE_INDEX = 'https://nodejs.org/dist/latest-v22.x/'
+
+
+# La dernière installation a-t-elle été contrôlée par sa somme SHA-256 ?
+LAST_VERIFIED = False
 
 
 class InstallError(Exception):
@@ -41,23 +46,58 @@ def detect_target():
     return None
 
 
-def _download(url, progress, label, start, end):
+def _download(url, dest, progress, label, start, end):
+    """Télécharge url dans le fichier dest, au fil de l'eau (l'archive pèse
+    40 à 100 Mo : elle ne passe plus par la mémoire). Retourne son SHA-256."""
+    digest = hashlib.sha256()
     try:
         resp = requests.get(url, stream=True, timeout=30)
         resp.raise_for_status()
+        total = int(resp.headers.get('Content-Length') or 0)
+        done = 0
+        with open(dest, 'wb') as fh:
+            for chunk in resp.iter_content(256 * 1024):
+                fh.write(chunk)
+                digest.update(chunk)
+                done += len(chunk)
+                if progress:
+                    pct = start + (end - start) * done / total if total else start
+                    if progress(int(pct), '%s  %.0f Mo' % (label, done / 1048576.0)):
+                        raise InstallError('annulé')
     except requests.RequestException as exc:
         raise InstallError('téléchargement impossible : %s' % exc)
-    total = int(resp.headers.get('Content-Length') or 0)
-    buf = io.BytesIO()
-    done = 0
-    for chunk in resp.iter_content(256 * 1024):
-        buf.write(chunk)
-        done += len(chunk)
-        if progress:
-            pct = start + (end - start) * done / total if total else start
-            if progress(int(pct), '%s  %.0f Mo' % (label, done / 1048576.0)):
-                raise InstallError('annulé')
-    return buf.getvalue()
+    except OSError as exc:
+        raise InstallError('écriture impossible (espace disque ?) : %s' % exc)
+    return digest.hexdigest()
+
+
+def _published_sha256(url, filename):
+    """Somme SHA-256 publiée pour filename (format « somme  nom » par ligne).
+
+    None si la liste est injoignable : l'installation continue alors sans
+    contrôle, comme avant la 1.0.3. Une somme trouvée et différente de celle
+    du fichier téléchargé arrête toujours l'installation."""
+    try:
+        resp = requests.get(url, timeout=30)
+        resp.raise_for_status()
+    except requests.RequestException:
+        return None
+    for line in resp.text.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[-1].lstrip('*') == filename \
+                and re.fullmatch(r'[0-9a-fA-F]{64}', parts[0]):
+            return parts[0].lower()
+    return None
+
+
+def _check_sha256(expected, actual, name):
+    """True si la somme a été vérifiée, False si aucune n'était disponible."""
+    if expected is None:
+        return False
+    if expected != actual:
+        raise InstallError('fichier %s altéré ou incomplet (somme SHA-256 différente de celle '
+                           'publiée) : relance l\'installation' % name)
+    return True
 
 
 def _write_exec(path, data):
@@ -100,36 +140,59 @@ def install(profile_dir, progress=None):
         raise InstallError('machine non prise en charge (%s, %s)' % (platform.system(), platform.machine()))
     kind, arch = target
     bindir = os.path.join(profile_dir, 'bin')
-    os.makedirs(bindir, exist_ok=True)
+    try:
+        os.makedirs(bindir, exist_ok=True)
+        fd, archive = tempfile.mkstemp(prefix='download-', suffix='.tmp', dir=bindir)
+        os.close(fd)
+    except OSError as exc:
+        raise InstallError('dossier d\'installation inaccessible : %s' % exc)
 
-    if kind == 'deno':
-        data = _download(DENO_URL % arch, progress, 'Deno', 0, 90)
-        try:
-            with zipfile.ZipFile(io.BytesIO(data)) as zf:
-                binary = zf.read('deno')
-        except (zipfile.BadZipFile, KeyError) as exc:
-            raise InstallError('archive Deno invalide : %s' % exc)
-        path = os.path.join(bindir, 'deno')
-    else:
-        try:
-            index = requests.get(NODE_INDEX, timeout=30).text
-        except requests.RequestException as exc:
-            raise InstallError('index Node.js inaccessible : %s' % exc)
-        match = re.search(r'node-v[\d.]+-linux-armv7l\.tar\.xz', index)
-        if not match:
-            raise InstallError('archive Node.js armv7l introuvable')
-        name = match.group(0)
-        data = _download(NODE_INDEX + name, progress, 'Node.js', 0, 90)
-        try:
-            import tarfile
-            with tarfile.open(fileobj=io.BytesIO(data), mode='r:xz') as tf:
-                member = tf.getmember('%s/bin/node' % name[:-len('.tar.xz')])
-                binary = tf.extractfile(member).read()
-        except (ImportError, KeyError, OSError) as exc:  # lzma absent, archive inattendue
-            raise InstallError('extraction de Node.js impossible : %s' % exc)
-        path = os.path.join(bindir, 'node')
+    try:
+        if kind == 'deno':
+            name = 'deno-%s-unknown-linux-gnu.zip' % arch
+            expected = _published_sha256(DENO_URL % arch + '.sha256sum', name)
+            actual = _download(DENO_URL % arch, archive, progress, 'Deno', 0, 90)
+            checked = _check_sha256(expected, actual, name)
+            try:
+                with zipfile.ZipFile(archive) as zf:
+                    binary = zf.read('deno')
+            except (zipfile.BadZipFile, KeyError, OSError) as exc:
+                raise InstallError('archive Deno invalide : %s' % exc)
+            path = os.path.join(bindir, 'deno')
+        else:
+            try:
+                index = requests.get(NODE_INDEX, timeout=30).text
+            except requests.RequestException as exc:
+                raise InstallError('index Node.js inaccessible : %s' % exc)
+            match = re.search(r'node-v[\d.]+-linux-armv7l\.tar\.xz', index)
+            if not match:
+                raise InstallError('archive Node.js armv7l introuvable')
+            name = match.group(0)
+            expected = _published_sha256(NODE_INDEX + 'SHASUMS256.txt', name)
+            actual = _download(NODE_INDEX + name, archive, progress, 'Node.js', 0, 90)
+            checked = _check_sha256(expected, actual, name)
+            try:
+                import tarfile
+                with tarfile.open(archive, mode='r:xz') as tf:
+                    member = tf.getmember('%s/bin/node' % name[:-len('.tar.xz')])
+                    binary = tf.extractfile(member).read()
+            except InstallError:
+                raise
+            except Exception as exc:  # lzma absent, archive tronquée ou inattendue (TarError, LZMAError…)
+                raise InstallError('extraction de Node.js impossible : %s' % exc)
+            path = os.path.join(bindir, 'node')
 
-    if progress:
-        progress(95, 'Vérification…')
-    _write_exec(path, binary)
+        if progress:
+            progress(95, 'Vérification…')
+        try:
+            _write_exec(path, binary)
+        except OSError as exc:
+            raise InstallError('écriture du moteur impossible : %s' % exc)
+    finally:
+        try:
+            os.remove(archive)
+        except OSError:
+            pass
+    global LAST_VERIFIED
+    LAST_VERIFIED = checked
     return kind, path, version_of(path)

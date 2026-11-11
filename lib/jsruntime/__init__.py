@@ -57,6 +57,9 @@ def install_with_dialog(heading=None):
         xbmcgui.Dialog().ok(heading, L(32003) % exc)
         return None
     dialog.close()
-    xbmc.log('[jsruntime] installé : %s %s (%s)' % (result[0], result[2], result[1]), xbmc.LOGINFO)
+    xbmc.log('[jsruntime] installé : %s %s (%s), somme SHA-256 %s' % (
+        result[0], result[2], result[1],
+        'vérifiée' if core.LAST_VERIFIED else 'non vérifiée (liste des sommes injoignable)'),
+        xbmc.LOGINFO if core.LAST_VERIFIED else xbmc.LOGWARNING)
     xbmcgui.Dialog().notification(heading, L(32002) % result[2])
     return result
