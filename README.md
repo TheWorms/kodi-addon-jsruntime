@@ -3,7 +3,7 @@
 # Moteur JavaScript pour Kodi
 
 <!-- version:auto -->
-**Version : 1.0.3**
+**Version : 1.0.4**
 <!-- /version:auto -->
 
 Module Kodi qui installe un **moteur JavaScript** (Deno ou Node.js) pour les addons qui en ont

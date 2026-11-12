@@ -3,7 +3,7 @@
 # JavaScript engine for Kodi
 
 <!-- version:auto -->
-**Version : 1.0.3**
+**Version : 1.0.4**
 <!-- /version:auto -->
 
 Kodi module that installs a **JavaScript engine** (Deno or Node.js) for add-ons that need one.
