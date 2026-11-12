@@ -11,6 +11,7 @@ import hashlib
 import os
 import platform
 import re
+import shutil
 import stat
 import struct
 import subprocess
@@ -100,12 +101,24 @@ def _check_sha256(expected, actual, name):
     return True
 
 
-def _write_exec(path, data):
-    tmp = path + '.tmp'
-    with open(tmp, 'wb') as fh:
-        fh.write(data)
-    os.chmod(tmp, os.stat(tmp).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    os.replace(tmp, path)
+def _make_exec(path):
+    os.chmod(path, os.stat(path).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+
+def _clean_leftovers(bindir):
+    """Retire les fichiers temporaires d'une installation interrompue (Kodi
+    arrêté ou box débranchée en plein téléchargement) : ils pèsent jusqu'à
+    une centaine de Mo et ne servent plus à rien."""
+    try:
+        names = os.listdir(bindir)
+    except OSError:
+        return
+    for name in names:
+        if name.endswith(('.tmp', '.new')):
+            try:
+                os.remove(os.path.join(bindir, name))
+            except OSError:
+                pass
 
 
 def version_of(path):
@@ -134,7 +147,12 @@ def install(profile_dir, progress=None):
     """Installe le moteur adapté ; retourne (nom, chemin, version).
 
     progress(pourcentage, texte) -> True pour annuler.
+
+    Le nouveau moteur est écrit à côté de l'ancien, lancé une fois, et ne le
+    remplace que s'il démarre : une mise à jour ratée (binaire incompatible
+    avec la machine, disque plein) laisse le moteur précédent en place.
     """
+    global LAST_VERIFIED
     target = detect_target()
     if target is None:
         raise InstallError('machine non prise en charge (%s, %s)' % (platform.system(), platform.machine()))
@@ -142,11 +160,14 @@ def install(profile_dir, progress=None):
     bindir = os.path.join(profile_dir, 'bin')
     try:
         os.makedirs(bindir, exist_ok=True)
+        _clean_leftovers(bindir)
         fd, archive = tempfile.mkstemp(prefix='download-', suffix='.tmp', dir=bindir)
         os.close(fd)
     except OSError as exc:
         raise InstallError('dossier d\'installation inaccessible : %s' % exc)
 
+    path = os.path.join(bindir, 'deno' if kind == 'deno' else 'node')
+    candidate = path + '.new'
     try:
         if kind == 'deno':
             name = 'deno-%s-unknown-linux-gnu.zip' % arch
@@ -154,11 +175,12 @@ def install(profile_dir, progress=None):
             actual = _download(DENO_URL % arch, archive, progress, 'Deno', 0, 90)
             checked = _check_sha256(expected, actual, name)
             try:
-                with zipfile.ZipFile(archive) as zf:
-                    binary = zf.read('deno')
+                # Extraction au fil de l'eau : le binaire (plus de 100 Mo)
+                # ne passe pas par la mémoire.
+                with zipfile.ZipFile(archive) as zf, zf.open('deno') as src, open(candidate, 'wb') as dst:
+                    shutil.copyfileobj(src, dst, 1024 * 1024)
             except (zipfile.BadZipFile, KeyError, OSError) as exc:
-                raise InstallError('archive Deno invalide : %s' % exc)
-            path = os.path.join(bindir, 'deno')
+                raise InstallError('archive Deno invalide ou disque plein : %s' % exc)
         else:
             try:
                 index = requests.get(NODE_INDEX, timeout=30).text
@@ -175,24 +197,30 @@ def install(profile_dir, progress=None):
                 import tarfile
                 with tarfile.open(archive, mode='r:xz') as tf:
                     member = tf.getmember('%s/bin/node' % name[:-len('.tar.xz')])
-                    binary = tf.extractfile(member).read()
+                    with tf.extractfile(member) as src, open(candidate, 'wb') as dst:
+                        shutil.copyfileobj(src, dst, 1024 * 1024)
             except InstallError:
                 raise
-            except Exception as exc:  # lzma absent, archive tronquée ou inattendue (TarError, LZMAError…)
+            except Exception as exc:  # lzma absent, archive tronquée ou inattendue, disque plein
                 raise InstallError('extraction de Node.js impossible : %s' % exc)
-            path = os.path.join(bindir, 'node')
 
         if progress:
             progress(95, 'Vérification…')
         try:
-            _write_exec(path, binary)
+            _make_exec(candidate)
         except OSError as exc:
             raise InstallError('écriture du moteur impossible : %s' % exc)
-    finally:
+        # Le nouveau moteur doit démarrer AVANT de remplacer l'ancien.
+        version = version_of(candidate)
         try:
-            os.remove(archive)
-        except OSError:
-            pass
-    global LAST_VERIFIED
+            os.replace(candidate, path)
+        except OSError as exc:
+            raise InstallError('mise en place du moteur impossible : %s' % exc)
+    finally:
+        for leftover in (archive, candidate):
+            try:
+                os.remove(leftover)
+            except OSError:
+                pass
     LAST_VERIFIED = checked
-    return kind, path, version_of(path)
+    return kind, path, version

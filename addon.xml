@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="script.module.jsruntime" name="Moteur JavaScript" version="1.0.3" provider-name="TheWorms">
+<addon id="script.module.jsruntime" name="Moteur JavaScript" version="1.0.4" provider-name="TheWorms">
   <requires>
     <import addon="xbmc.python" version="3.0.0"/>
     <import addon="script.module.requests" version="2.22.0"/>
@@ -20,6 +20,6 @@
       <icon>resources/icon.png</icon>
       <fanart>resources/fanart.jpg</fanart>
     </assets>
-    <news>1.0.3 : le moteur téléchargé est contrôlé par sa somme SHA-256 publiée (Deno, Node.js) et écrit directement sur le disque au lieu de passer par la mémoire ; erreurs d'archive mieux signalées.</news>
+    <news>1.0.4 : une mise à jour du moteur qui échoue (binaire incompatible avec la machine, disque plein, coupure) laisse le moteur précédent en place — le nouveau est essayé avant de le remplacer ; extraction sans passer par la mémoire ; fichiers temporaires d'une installation interrompue nettoyés.</news>
   </extension>
 </addon>
